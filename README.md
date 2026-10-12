@@ -1,1 +1,1 @@
-# EventEasee
+EvenEase Personal Event Mangement System
