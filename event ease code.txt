@@ -1,0 +1,433 @@
+"""
+EventEase - Personal Event Organizer & Budget Manager
+Run this file in Python IDLE. Uses only Python's standard library.
+Data is saved automatically in eventease_data.json in the same folder.
+"""
+
+import json
+import os
+from datetime import datetime
+
+DATA_FILE = "eventease_data.json"
+
+def load_data():
+    if os.path.exists(DATA_FILE):
+        try:
+            with open(DATA_FILE, "r", encoding="utf-8") as file:
+                data = json.load(file)
+        except (json.JSONDecodeError, OSError):
+            data = {}
+    else:
+        data = {}
+    defaults = {
+        "events": [],
+        "guests": [],
+        "tasks": [],
+        "vendors": [],
+        "categories": ["Food", "Decoration", "Venue", "Transport", "Photography", "Other"],
+        "expenses": []
+    }
+    for key, value in defaults.items():
+        data.setdefault(key, value)
+    return data
+
+data = load_data()
+
+def save_data():
+    with open(DATA_FILE, "w", encoding="utf-8") as file:
+        json.dump(data, file, indent=4)
+
+def next_id(items):
+    return max([item.get("id", 0) for item in items], default=0) + 1
+
+def read_number(prompt, allow_zero=False):
+    while True:
+        try:
+            value = float(input(prompt))
+            if value < 0 or (value == 0 and not allow_zero):
+                print("Enter a valid positive number.")
+                continue
+            return value
+        except ValueError:
+            print("Please enter a number.")
+
+def find_event(event_id):
+    for event in data["events"]:
+        if event["id"] == event_id:
+            return event
+    return None
+
+def choose_event():
+    if not data["events"]:
+        print("No events found. Create an event first.")
+        return None
+    list_events()
+    try:
+        event_id = int(input("Enter Event ID: "))
+    except ValueError:
+        print("Invalid ID.")
+        return None
+    event = find_event(event_id)
+    if not event:
+        print("Event ID not found.")
+    return event
+
+def list_events():
+    if not data["events"]:
+        print("\nNo events available.")
+        return
+    print("\n--- EVENTS ---")
+    for e in data["events"]:
+        print(f'ID: {e["id"]} | {e["name"]} | Date: {e["date"]} | '
+              f'Budget: Rs. {e["budget"]:.2f} | Location: {e["location"]}')
+
+def create_event():
+    print("\n--- CREATE EVENT ---")
+    name = input("Event name: ").strip()
+    if not name:
+        print("Event name cannot be empty.")
+        return
+    date = input("Event date (YYYY-MM-DD): ").strip()
+    try:
+        datetime.strptime(date, "%Y-%m-%d")
+    except ValueError:
+        print("Invalid date. Use YYYY-MM-DD.")
+        return
+    location = input("Location: ").strip()
+    budget = read_number("Set event budget (Rs.): ", allow_zero=True)
+    event = {
+        "id": next_id(data["events"]),
+        "name": name,
+        "date": date,
+        "location": location,
+        "budget": budget
+    }
+    data["events"].append(event)
+    save_data()
+    print("Event created successfully. Event ID:", event["id"])
+
+def update_event():
+    event = choose_event()
+    if not event:
+        return
+    print("Press Enter to keep the current value.")
+    name = input(f'Event name [{event["name"]}]: ').strip()
+    date = input(f'Event date [{event["date"]}] (YYYY-MM-DD): ').strip()
+    location = input(f'Location [{event["location"]}]: ').strip()
+    budget_text = input(f'Budget [Rs. {event["budget"]:.2f}]: ').strip()
+    if name:
+        event["name"] = name
+    if date:
+        try:
+            datetime.strptime(date, "%Y-%m-%d")
+            event["date"] = date
+        except ValueError:
+            print("Invalid date; keeping the old date.")
+    if location:
+        event["location"] = location
+    if budget_text:
+        try:
+            budget = float(budget_text)
+            if budget >= 0:
+                event["budget"] = budget
+            else:
+                print("Budget cannot be negative; keeping the old budget.")
+        except ValueError:
+            print("Invalid budget; keeping the old budget.")
+    save_data()
+    print("Event details updated.")
+
+def add_guest():
+    event = choose_event()
+    if not event:
+        return
+    name = input("Guest name: ").strip()
+    contact = input("Phone/email (optional): ").strip()
+    if not name:
+        print("Guest name cannot be empty.")
+        return
+    data["guests"].append({
+        "id": next_id(data["guests"]), "event_id": event["id"],
+        "name": name, "contact": contact, "status": "Invited"
+    })
+    save_data()
+    print("Guest added.")
+
+def manage_guests():
+    print("\n1. Add guest\n2. View guests\n3. Update RSVP status\n4. Delete guest")
+    choice = input("Choose: ").strip()
+    if choice == "1":
+        add_guest()
+    elif choice == "2":
+        event = choose_event()
+        if event:
+            guests = [g for g in data["guests"] if g["event_id"] == event["id"]]
+            if not guests:
+                print("No guests for this event.")
+            for g in guests:
+                print(f'ID {g["id"]}: {g["name"]} | {g["contact"]} | RSVP: {g["status"]}')
+    elif choice == "3":
+        try:
+            guest_id = int(input("Guest ID: "))
+            guest = next((g for g in data["guests"] if g["id"] == guest_id), None)
+            if not guest:
+                print("Guest not found.")
+            else:
+                print("Statuses: Invited, Confirmed, Declined")
+                status = input("New status: ").strip().title()
+                if status in ("Invited", "Confirmed", "Declined"):
+                    guest["status"] = status
+                    save_data()
+                    print("Guest status updated.")
+                else:
+                    print("Invalid status.")
+        except ValueError:
+            print("Enter a valid ID.")
+    elif choice == "4":
+        try:
+            guest_id = int(input("Guest ID to delete: "))
+            old_count = len(data["guests"])
+            data["guests"] = [g for g in data["guests"] if g["id"] != guest_id]
+            if len(data["guests"]) < old_count:
+                save_data()
+                print("Guest deleted.")
+            else:
+                print("Guest not found.")
+        except ValueError:
+            print("Enter a valid ID.")
+    else:
+        print("Invalid choice.")
+
+def manage_tasks():
+    print("\n1. Add task\n2. View tasks\n3. Mark task complete")
+    choice = input("Choose: ").strip()
+    if choice == "1":
+        event = choose_event()
+        if not event:
+            return
+        task_name = input("Task description: ").strip()
+        due_date = input("Due date (YYYY-MM-DD, optional): ").strip()
+        if due_date:
+            try:
+                datetime.strptime(due_date, "%Y-%m-%d")
+            except ValueError:
+                print("Invalid date.")
+                return
+        if not task_name:
+            print("Task description cannot be empty.")
+            return
+        data["tasks"].append({
+            "id": next_id(data["tasks"]), "event_id": event["id"],
+            "name": task_name, "due_date": due_date, "status": "Pending"
+        })
+        save_data()
+        print("Task added.")
+    elif choice == "2":
+        event = choose_event()
+        if event:
+            tasks = [t for t in data["tasks"] if t["event_id"] == event["id"]]
+            if not tasks:
+                print("No tasks found.")
+            for t in tasks:
+                print(f'ID {t["id"]}: {t["name"]} | Due: {t["due_date"] or "Not set"} | {t["status"]}')
+    elif choice == "3":
+        try:
+            task_id = int(input("Task ID to complete: "))
+            task = next((t for t in data["tasks"] if t["id"] == task_id), None)
+            if task:
+                task["status"] = "Completed"
+                save_data()
+                print("Task marked completed.")
+            else:
+                print("Task not found.")
+        except ValueError:
+            print("Enter a valid ID.")
+    else:
+        print("Invalid choice.")
+
+def manage_vendors():
+    print("\n1. Add vendor\n2. View vendors")
+    choice = input("Choose: ").strip()
+    if choice == "1":
+        event = choose_event()
+        if not event:
+            return
+        name = input("Vendor/business name: ").strip()
+        service = input("Service (catering, decoration, etc.): ").strip()
+        contact = input("Contact details: ").strip()
+        if not name:
+            print("Vendor name cannot be empty.")
+            return
+        data["vendors"].append({
+            "id": next_id(data["vendors"]), "event_id": event["id"],
+            "name": name, "service": service, "contact": contact
+        })
+        save_data()
+        print("Vendor added.")
+    elif choice == "2":
+        event = choose_event()
+        if event:
+            vendors = [v for v in data["vendors"] if v["event_id"] == event["id"]]
+            if not vendors:
+                print("No vendors found.")
+            for v in vendors:
+                print(f'ID {v["id"]}: {v["name"]} | {v["service"]} | {v["contact"]}')
+    else:
+        print("Invalid choice.")
+
+def manage_categories():
+    print("\nCurrent categories:", ", ".join(data["categories"]))
+    category = input("Enter new expense category: ").strip().title()
+    if not category:
+        print("Category cannot be empty.")
+    elif category.lower() in [c.lower() for c in data["categories"]]:
+        print("Category already exists.")
+    else:
+        data["categories"].append(category)
+        save_data()
+        print("Category added.")
+
+def record_expense():
+    event = choose_event()
+    if not event:
+        return
+    print("Categories:", ", ".join(data["categories"]))
+    category = input("Expense category: ").strip().title()
+    if category.lower() not in [c.lower() for c in data["categories"]]:
+        print("Unknown category. Add it through Expense Categories first.")
+        return
+    description = input("Expense description: ").strip()
+    amount = read_number("Amount (Rs.): ")
+    data["expenses"].append({
+        "id": next_id(data["expenses"]), "event_id": event["id"],
+        "category": category, "description": description, "amount": amount,
+        "date": datetime.now().strftime("%Y-%m-%d")
+    })
+    save_data()
+    print("Expense recorded.")
+
+def budget_report(event):
+    expenses = [x for x in data["expenses"] if x["event_id"] == event["id"]]
+    total = sum(x["amount"] for x in expenses)
+    remaining = event["budget"] - total
+    utilization = (total / event["budget"] * 100) if event["budget"] else 0
+    print("\n--- EVENT BUDGET REPORT ---")
+    print("Event:", event["name"])
+    print("Date:", event["date"])
+    print(f'Budget: Rs. {event["budget"]:.2f}')
+    print(f'Total expenses: Rs. {total:.2f}')
+    print(f'Remaining budget: Rs. {remaining:.2f}')
+    print(f'Budget utilization: {utilization:.1f}%')
+    if event["budget"] and total > event["budget"]:
+        print("WARNING: The event is over budget!")
+    if expenses:
+        print("Expense details:")
+        for x in expenses:
+            print(f'  {x["category"]} - {x["description"]}: Rs. {x["amount"]:.2f} ({x["date"]})')
+    else:
+        print("No expenses recorded yet.")
+
+def reports():
+    event = choose_event()
+    if event:
+        budget_report(event)
+
+def search_events():
+    term = input("Search by event name, date, or location: ").strip().lower()
+    matches = [e for e in data["events"]
+               if term in e["name"].lower() or term in e["date"].lower()
+               or term in e["location"].lower()]
+    if not matches:
+        print("No matching events found.")
+    else:
+        for e in matches:
+            print(f'ID {e["id"]}: {e["name"]} | {e["date"]} | {e["location"]} | Budget Rs. {e["budget"]:.2f}')
+
+def event_budget_query():
+    print("\nAsk a question about your events or budgets.")
+    print('Examples: "total expenses", "remaining budget", "list events", "budget for event 1"')
+    question = input("Your question: ").strip().lower()
+    if "list" in question and "event" in question:
+        list_events()
+        return
+    if "total expense" in question or "spent" in question:
+        total = sum(x["amount"] for x in data["expenses"])
+        print(f"Total expenses across all events: Rs. {total:.2f}")
+        return
+    if "guest" in question:
+        print("Total guests:", len(data["guests"]))
+        print("Confirmed guests:", sum(1 for g in data["guests"] if g["status"] == "Confirmed"))
+        return
+    if "task" in question:
+        print("Pending tasks:", sum(1 for t in data["tasks"] if t["status"] == "Pending"))
+        print("Completed tasks:", sum(1 for t in data["tasks"] if t["status"] == "Completed"))
+        return
+    if "budget" in question or "expense" in question or "remaining" in question:
+        digits = "".join(ch if ch.isdigit() else " " for ch in question).split()
+        event = find_event(int(digits[-1])) if digits and find_event(int(digits[-1])) else None
+        if event:
+            budget_report(event)
+        elif data["events"]:
+            print("Choose an event to view its budget report.")
+            event = choose_event()
+            if event:
+                budget_report(event)
+        else:
+            print("Create an event first.")
+        return
+    print("I can answer basic questions about event lists, expenses, budgets, guests, and tasks.")
+    print("For advanced AI, connect a language model API in a future version.")
+
+def main_menu():
+    while True:
+        print("\n" + "=" * 48)
+        print("       EVENTEASE - EVENT ORGANIZER")
+        print("=" * 48)
+        print("1. Create Event")
+        print("2. Update Event Details")
+        print("3. Manage Guests")
+        print("4. Manage Event Tasks")
+        print("5. Add/View Vendors")
+        print("6. Create Expense Categories")
+        print("7. Record Event Expenses")
+        print("8. Set/Update Event Budget")
+        print("9. Monitor Budget / Financial Report")
+        print("10. Search / Filter Events")
+        print("11. Ask Event/Budget Questions")
+        print("12. View All Events")
+        print("0. Exit")
+        choice = input("Enter your choice: ").strip()
+
+        if choice == "1":
+            create_event()
+        elif choice == "2":
+            update_event()
+        elif choice == "3":
+            manage_guests()
+        elif choice == "4":
+            manage_tasks()
+        elif choice == "5":
+            manage_vendors()
+        elif choice == "6":
+            manage_categories()
+        elif choice == "7":
+            record_expense()
+        elif choice == "8":
+            update_event()
+        elif choice == "9":
+            reports()
+        elif choice == "10":
+            search_events()
+        elif choice == "11":
+            event_budget_query()
+        elif choice == "12":
+            list_events()
+        elif choice == "0":
+            save_data()
+            print("Thank you for using EventEase!")
+            break
+        else:
+            print("Invalid choice. Please select from the menu.")
+
+if __name__ == "__main__":
+    main_menu()
